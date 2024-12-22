@@ -26,6 +26,7 @@
           ];
           LD_LIBRARY_PATH = "${systemd}/lib";
         };
+        packages.default = callPackage ./nix/package.nix { };
       }
     );
 }

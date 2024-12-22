@@ -1,5 +1,6 @@
-use anyhow::{Context, bail};
-use clap::{Parser, Subcommand, ValueEnum};
+use anyhow::{bail, Context};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use clap_complete::Shell;
 use serde::Serialize;
 use std::str::FromStr;
 use udev::Enumerator;
@@ -192,6 +193,10 @@ enum Command {
         #[command(subcommand)]
         attribute: SetAttribute,
     },
+    Completion {
+        #[arg(value_enum)]
+        shell: Shell,
+    },
 }
 
 #[derive(Debug, Parser)]
@@ -243,6 +248,12 @@ fn main() -> anyhow::Result<()> {
                 SetAttribute::PollRate { poll_rate } => device.set_poll_rate(poll_rate)?,
             }
         }
+        Command::Completion { shell } => clap_complete::generate(
+            shell,
+            &mut Args::command(),
+            "razer-cli",
+            &mut std::io::stdout(),
+        ),
     };
 
     Ok(())
