@@ -1,4 +1,0 @@
-vendor_id: 0003:00001532:000000B7
-name: Razer Razer DeathAdder V3 Pro
-serial: PM2334H27701704
-
