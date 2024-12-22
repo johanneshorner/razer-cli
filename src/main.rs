@@ -1,9 +1,7 @@
-#![feature(os_str_display)]
-
 use anyhow::{Context, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
-use std::{fmt::Display, str::FromStr};
+use std::str::FromStr;
 use udev::Enumerator;
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -39,10 +37,10 @@ impl FromStr for PollRate {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, clap::Args)]
 struct Dpi {
-    x: u32,
-    y: u32,
+    x: u16,
+    y: u16,
 }
 
 #[derive(Serialize)]
@@ -71,8 +69,16 @@ impl GetAttribute {
 
 #[derive(Debug, Subcommand)]
 enum SetAttribute {
-    Dpi { x: u32, y: u32 },
+    Dpi(Dpi),
     PollRate { poll_rate: PollRate },
+}
+
+#[derive(Serialize)]
+struct DeviceInformation {
+    #[serde(rename(serialize = "type"))]
+    ty: String,
+    serial: String,
+    firmware_version: String,
 }
 
 struct Device(udev::Device);
@@ -106,6 +112,30 @@ impl Device {
             .map(Self)
     }
 
+    fn ty(&self) -> &str {
+        self.0
+            .attribute_value("device_type")
+            .expect("attribute device_type to exist")
+            .to_str()
+            .expect("utf8")
+    }
+
+    fn serial(&self) -> &str {
+        self.0
+            .attribute_value("device_serial")
+            .expect("attribute device_serial to exist")
+            .to_str()
+            .expect("utf8")
+    }
+
+    fn firmware_version(&self) -> &str {
+        self.0
+            .attribute_value("firmware_version")
+            .expect("attribute firmware_version to exist")
+            .to_str()
+            .expect("utf8")
+    }
+
     fn charge_level(&self) -> Option<u8> {
         self.0.attribute_value("charge_level").map(|s| {
             s.to_str()
@@ -123,8 +153,8 @@ impl Device {
                 .split_once(':')
                 .expect("dpi in the form of 800:800");
             Dpi {
-                x: x.parse::<u32>().expect("number"),
-                y: y.parse::<u32>().expect("number"),
+                x: x.parse::<_>().expect("number"),
+                y: y.parse::<_>().expect("number"),
             }
         })
     }
@@ -135,8 +165,11 @@ impl Device {
             .map(|s| s.to_str().expect("utf8").parse::<PollRate>().unwrap())
     }
 
-    fn set_dpi(&self, dpi: &Dpi) -> anyhow::Result<()> {
-        // self.0.set_attribute_value("dpi", todo!())?;
+    fn set_dpi(&mut self, dpi: &Dpi) -> anyhow::Result<()> {
+        let bytes = [dpi.x.to_be_bytes(), dpi.y.to_be_bytes()].concat();
+        // not entirely sure why but udev::Device::set_attribute_value fails with `Invalid Argument` here
+        // probably has something to do with NUL byte or encoding
+        std::fs::write(self.0.syspath().join("dpi"), &bytes)?;
         Ok(())
     }
 
@@ -144,27 +177,6 @@ impl Device {
         self.0
             .set_attribute_value("poll_rate", poll_rate.as_u32().to_string())?;
         Ok(())
-    }
-}
-
-impl Display for Device {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(
-            f,
-            "Type: {}",
-            self.0
-                .attribute_value("device_type")
-                .expect("attribute device_type to exist")
-                .display()
-        )?;
-        write!(
-            f,
-            "Serial: {}",
-            self.0
-                .attribute_value("device_serial")
-                .expect("attribute device_type to exist")
-                .display()
-        )
     }
 }
 
@@ -193,10 +205,15 @@ fn main() -> anyhow::Result<()> {
 
     match args.command {
         Command::List => {
-            let devices = Device::find_razer_devices()?;
-            for (i, device) in devices.iter().enumerate() {
-                eprintln!("{}:\n{device}\n", i + 1);
-            }
+            let device_information: Vec<DeviceInformation> = Device::find_razer_devices()?
+                .iter()
+                .map(|d| DeviceInformation {
+                    ty: d.ty().into(),
+                    serial: d.serial().into(),
+                    firmware_version: d.firmware_version().into(),
+                })
+                .collect();
+            println!("{}", serde_json::to_string(&device_information)?);
         }
         Command::Get {
             device_serial,
@@ -211,9 +228,9 @@ fn main() -> anyhow::Result<()> {
                         serde_json::to_string(&device.poll_rate().map(|p| p.as_u32()))?
                     }
                 };
-                eprintln!("{json:?}");
+                println!("{json:?}");
             } else {
-                eprintln!("{}", serde_json::to_string(&GetAttribute::all(&device))?);
+                println!("{}", serde_json::to_string(&GetAttribute::all(&device))?);
             }
         }
         Command::Set {
@@ -222,7 +239,7 @@ fn main() -> anyhow::Result<()> {
         } => {
             let mut device = Device::from_device_serial(&device_serial)?;
             match attribute {
-                SetAttribute::Dpi { x, y } => todo!(),
+                SetAttribute::Dpi(dpi) => device.set_dpi(&dpi)?,
                 SetAttribute::PollRate { poll_rate } => device.set_poll_rate(poll_rate)?,
             }
         }
