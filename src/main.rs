@@ -39,12 +39,14 @@ impl FromStr for PollRate {
 }
 
 #[derive(Debug, Serialize, clap::Args)]
+#[serde(rename_all = "kebab-case")]
 struct Dpi {
     x: u16,
     y: u16,
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
 struct All {
     charge_level: Option<u8>,
     dpi: Option<Dpi>,
@@ -75,6 +77,7 @@ enum SetAttribute {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
 struct DeviceInformation {
     #[serde(rename(serialize = "type"))]
     ty: String,
