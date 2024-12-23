@@ -7,7 +7,7 @@
 
 rustPlatform.buildRustPackage {
   pname = "razer-cli";
-  version = "0.2.0";
+  version = "0.3.0";
 
   nativeBuildInputs = [
     pkg-config
@@ -19,7 +19,7 @@ rustPlatform.buildRustPackage {
   ];
 
   src = ./..;
-  cargoHash = "sha256-lavypF5UVP3NDq5FufJq9jwsK5FUL0/T06uu2EUZelw=";
+  cargoHash = "sha256-fN4HKCZ4d05v2OJx1WqD7r7mkB91c9wQnojHGx2HQK8=";
 
   postInstall = ''
     installShellCompletion --cmd razer-cli \

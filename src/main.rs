@@ -1,7 +1,7 @@
 use anyhow::{bail, Context};
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use std::str::FromStr;
 use udev::Enumerator;
 
@@ -13,6 +13,15 @@ enum PollRate {
     FiveHundred,
     #[value(name = "1000")]
     OneThousand,
+}
+
+impl Serialize for PollRate {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u32(self.as_u32())
+    }
 }
 
 impl PollRate {
@@ -45,35 +54,18 @@ struct Dpi {
     y: u16,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct All {
-    charge_level: Option<u8>,
-    dpi: Option<Dpi>,
-    poll_rate: Option<u32>,
-}
-
-#[derive(Debug, Clone, ValueEnum)]
-enum GetAttribute {
-    ChargeLevel,
-    Dpi,
-    PollRate,
-}
-
-impl GetAttribute {
-    fn all(device: &Device) -> All {
-        All {
-            charge_level: device.charge_level(),
-            dpi: device.dpi(),
-            poll_rate: device.poll_rate().map(|p| p.as_u32()),
-        }
-    }
-}
-
 #[derive(Debug, Subcommand)]
 enum SetAttribute {
     Dpi(Dpi),
     PollRate { poll_rate: PollRate },
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum Attribute {
+    ChargeLevel(u8),
+    Dpi(Dpi),
+    PollRate(PollRate),
 }
 
 #[derive(Serialize)]
@@ -83,6 +75,7 @@ struct DeviceInformation {
     ty: String,
     serial: String,
     firmware_version: String,
+    attributes: Vec<Attribute>,
 }
 
 struct Device(udev::Device);
@@ -187,10 +180,6 @@ impl Device {
 #[derive(Debug, Subcommand)]
 enum Command {
     List,
-    Get {
-        device_serial: String,
-        attribute: Option<GetAttribute>,
-    },
     Set {
         device_serial: String,
         #[command(subcommand)]
@@ -219,27 +208,17 @@ fn main() -> anyhow::Result<()> {
                     ty: d.ty().into(),
                     serial: d.serial().into(),
                     firmware_version: d.firmware_version().into(),
+                    attributes: vec![
+                        d.charge_level().map(Attribute::ChargeLevel),
+                        d.dpi().map(Attribute::Dpi),
+                        d.poll_rate().map(Attribute::PollRate),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect(),
                 })
                 .collect();
             println!("{}", serde_json::to_string(&device_information)?);
-        }
-        Command::Get {
-            device_serial,
-            attribute,
-        } => {
-            let device = Device::from_device_serial(&device_serial)?;
-            if let Some(attribute) = attribute {
-                let json = match attribute {
-                    GetAttribute::ChargeLevel => serde_json::to_string(&device.charge_level())?,
-                    GetAttribute::Dpi => serde_json::to_string(&device.dpi())?,
-                    GetAttribute::PollRate => {
-                        serde_json::to_string(&device.poll_rate().map(|p| p.as_u32()))?
-                    }
-                };
-                println!("{json:?}");
-            } else {
-                println!("{}", serde_json::to_string(&GetAttribute::all(&device))?);
-            }
         }
         Command::Set {
             device_serial,
