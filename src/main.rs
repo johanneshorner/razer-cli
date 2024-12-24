@@ -62,10 +62,10 @@ enum SetAttribute {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
-enum Attribute {
-    ChargeLevel(u8),
-    Dpi(Dpi),
-    PollRate(PollRate),
+struct Attributes {
+    charge_level: Option<u8>,
+    dpi: Option<Dpi>,
+    poll_rate: Option<PollRate>,
 }
 
 #[derive(Serialize)]
@@ -75,7 +75,7 @@ struct DeviceInformation {
     ty: String,
     serial: String,
     firmware_version: String,
-    attributes: Vec<Attribute>,
+    attributes: Attributes,
 }
 
 struct Device(udev::Device);
@@ -208,14 +208,11 @@ fn main() -> anyhow::Result<()> {
                     ty: d.ty().into(),
                     serial: d.serial().into(),
                     firmware_version: d.firmware_version().into(),
-                    attributes: vec![
-                        d.charge_level().map(Attribute::ChargeLevel),
-                        d.dpi().map(Attribute::Dpi),
-                        d.poll_rate().map(Attribute::PollRate),
-                    ]
-                    .into_iter()
-                    .flatten()
-                    .collect(),
+                    attributes: Attributes {
+                        charge_level: d.charge_level(),
+                        dpi: d.dpi(),
+                        poll_rate: d.poll_rate(),
+                    },
                 })
                 .collect();
             println!("{}", serde_json::to_string(&device_information)?);
